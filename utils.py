@@ -7,6 +7,23 @@ from lasagne import layers
 from lasagne.layers.conv import conv_output_length
 
 import theano.tensor as T
+
+from lasagne.layers import DenseLayer
+
+class TransposedDenseLayer(DenseLayer):
+    
+    def get_output_for(self, input, **kwargs):
+        if input.ndim > 2:
+            # if the input has more than two dimensions, flatten it into a
+            # batch of feature vectors.
+            input = input.flatten(2)
+
+        activation = T.dot(input, self.W.T)
+        if self.b is not None:
+            activation = activation + self.b.dimshuffle('x', 0)
+        return self.nonlinearity(activation)
+
+
 class TransposedConv2DLayer(Layer):
     """
     lasagne.layers.Conv2DLayer(incoming, num_filters, filter_size,
