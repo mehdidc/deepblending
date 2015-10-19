@@ -5,6 +5,7 @@ from lasagne.theano_extensions import conv, padding
 from lasagne.layers.base import Layer
 from lasagne import layers
 from lasagne.layers.conv import conv_output_length
+from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 import theano.tensor as T
 
@@ -253,3 +254,61 @@ class Conv2DDenseLayer(layers.Conv2DLayer):
     if "filter_size" in kwargs:
         del kwargs["filter_size"]
     super(Conv2DDenseLayer, self).__init__(incoming, num_filters, filter_size, **kwargs)
+    
+from lasagne.random import get_rng
+
+class SampleOutLayer(Layer):
+    """Dropout layer
+    Sets values to zero with probability p. See notes for disabling dropout
+    during testing.
+    Parameters
+    ----------
+    incoming : a :class:`Layer` instance or a tuple
+        the layer feeding into this layer, or the expected input shape
+    p : float or scalar tensor
+        The probability of setting a value to zero
+    rescale : bool
+        If true the input is rescaled with input / (1-p) when deterministic
+        is False.
+    Notes
+    -----
+    The dropout layer is a regularizer that randomly sets input values to
+    zero; see [1]_, [2]_ for why this might improve generalization.
+    During training you should set deterministic to false and during
+    testing you should set deterministic to true.
+    If rescale is true the input is scaled with input / (1-p) when
+    deterministic is false, see references for further discussion. Note that
+    this implementation scales the input at training time.
+    References
+    ----------
+    .. [1] Hinton, G., Srivastava, N., Krizhevsky, A., Sutskever, I.,
+           Salakhutdinov, R. R. (2012):
+           Improving neural networks by preventing co-adaptation of feature
+           detectors. arXiv preprint arXiv:1207.0580.
+    .. [2] Srivastava Nitish, Hinton, G., Krizhevsky, A., Sutskever,
+           I., & Salakhutdinov, R. R. (2014):
+           Dropout: A Simple Way to Prevent Neural Networks from Overfitting.
+           Journal of Machine Learning Research, 5(Jun)(2), 1929-1958.
+    """
+    def __init__(self, incoming, temperature=1, **kwargs):
+        super(SampleOutLayer, self).__init__(incoming, **kwargs)
+        self._srng = RandomStreams(get_rng().randint(1, 2147462579))
+        self.temperature = temperature
+
+    def get_output_for(self, input, deterministic=False, **kwargs):
+        """
+        Parameters
+        ----------
+        input : tensor
+            output from the previous layer
+        deterministic : bool
+            If true dropout and scaling is disabled, see notes
+        """
+        if deterministic or self.temperature == 0:
+            return input
+        else:
+            probs = T.exp(-self.temperature*input)           
+            probs /= probs.sum(axis=range(1, len(self.input_shape)))
+            input_shape = self.input_shape
+            return input * self._srng.binomial(input_shape, p=probs,
+                                               dtype=theano.config.floatX)
