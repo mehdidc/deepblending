@@ -8,7 +8,7 @@ from lasagne.layers.conv import conv_output_length
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 import theano.tensor as T
-
+import theano
 from lasagne.layers import DenseLayer
 
 class TransposedDenseLayer(DenseLayer):
@@ -307,8 +307,16 @@ class SampleOutLayer(Layer):
         if deterministic or self.temperature == 0:
             return input
         else:
-            probs = T.exp(-self.temperature*input)           
-            probs /= probs.sum(axis=range(1, len(self.input_shape)))
             input_shape = self.input_shape
+            if any(s is None for s in input_shape):
+                input_shape = input.shape
+            
+            axes = range(1, len(self.input_shape))
+            d = [0] + ['x'] * (len(self.input_shape) - 1)
+                         
+            a = input.min(axis=axes).dimshuffle(*d)
+            b = input.max(axis=axes).dimshuffle(*d)
+            probs = (input - a) / (b - a)
+            probs = probs ** self.temperature
             return input * self._srng.binomial(input_shape, p=probs,
                                                dtype=theano.config.floatX)
